@@ -1,4 +1,3 @@
-
 #include "cy_pdl.h"
 #include "cyhal.h"
 #include "cybsp.h"
@@ -20,7 +19,6 @@
 
 static QueueHandle_t btm_cmdQueue;
 
-
 typedef enum {
 	BTM_PRINT_TABLE,
 } btm_cmd_t;
@@ -28,9 +26,7 @@ typedef enum {
 typedef struct {
 	btm_cmd_t cmd;
 	void *data;
-
 } btm_cmdMsg_t;
-
 
 typedef struct {
 	uint8_t mac[6];
@@ -118,21 +114,6 @@ static void btm_dumpTable()
 	}
 }
 
-
-// static void adv_scan_result_cback(wiced_bt_ble_scan_results_t *p_scan_result, uint8_t *p_adv_data )
-// {
-//     if (p_scan_result)
-//     {
-//     	btm_addDevice(p_scan_result,p_adv_data);
-//     }
-// 	else
-// 	{
-// 		printf("Scan result error\n");
-// 	}
-// }
-
-
-
 static void btm_processBluetoothAppQueue(TimerHandle_t xTimer)
 {
 	btm_cmdMsg_t msg;
@@ -174,13 +155,11 @@ wiced_result_t app_bt_management_callback(wiced_bt_management_evt_t event, wiced
     switch (event)
     {
         case BTM_ENABLED_EVT:
-            /* Bluetooth Controller and Host Stack Enabled */
 
         	memset(myData,0,sizeof(myData));
 
             if (WICED_BT_SUCCESS == p_event_data->enabled.status)
             {
-				
 				wiced_bt_ble_observe (WICED_TRUE, 0,btm_addDevice);
                 btm_cmdQueue = xQueueCreate( 5, sizeof(btm_cmdMsg_t));
 
@@ -195,24 +174,8 @@ wiced_result_t app_bt_management_callback(wiced_bt_management_evt_t event, wiced
             break;
 
         case BTM_BLE_SCAN_STATE_CHANGED_EVT:
-
-            if(p_event_data->ble_scan_state_changed == BTM_BLE_SCAN_TYPE_HIGH_DUTY)
-            {
-                printf("Scan State Change: BTM_BLE_SCAN_TYPE_HIGH_DUTY\n");
-            }
-            else if(p_event_data->ble_scan_state_changed == BTM_BLE_SCAN_TYPE_LOW_DUTY)
-            {
-                printf("Scan State Change: BTM_BLE_SCAN_TYPE_LOW_DUTY\n");
-            }
-            else if(p_event_data->ble_scan_state_changed == BTM_BLE_SCAN_TYPE_NONE)
-            {
-                printf("Scan stopped\n");
-            }
-            else
-            {
-                printf("Invalid scan state\n");
-            }
-            break;
+			printf("Scan State :%s\n",btutil_getBLEAdvertModeName(p_event_data->ble_scan_state_changed));
+        break;
 
         default:
             printf("Unhandled Bluetooth Management Event: 0x%x %s\n", event, btutil_getBTEventName(event));
