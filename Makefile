@@ -29,7 +29,7 @@
 ################################################################################
 
 # Target board/hardware
-TARGET=CY8CPROTO-062-4343W
+TARGET=CY8CKIT-062S2-43012
 
 # Name of application (used to derive name of final linked file).
 APPNAME=mtb-example-psoc6-empty-app
@@ -67,7 +67,7 @@ VERBOSE=
 # ... then code in directories named COMPONENT_foo and COMPONENT_bar will be
 # added to the build
 #
-COMPONENTS=
+COMPONENTS=FREERTOS WICED_BLE
 
 # Like COMPONENTS, but disable optional code that was enabled by default.
 DISABLE_COMPONENTS=
@@ -82,8 +82,10 @@ SOURCES=
 # directories (without a leading -I).
 INCLUDES=
 
+
 # Add additional defines to the build process (without a leading -D).
-DEFINES=
+# CY_RTOS_AWARE
+DEFINES=CY_RETARGET_IO_CONVERT_LF_TO_CRLF
 
 # Select softfp or hardfp floating point. Default is softfp.
 VFP_SELECT=
@@ -131,9 +133,18 @@ POSTBUILD=
 # This controls where automatic source code discovery looks for code.
 CY_APP_PATH=
 
-# Relative path to the "base" library. It provides the core makefile build
-# infrastructure.
-CY_BASELIB_PATH=libs/psoc6make
+# Relative path to the shared repo location.
+#
+# All .mtb files have the format, <URI>#<COMMIT>#<LOCATION>. If the <LOCATION> field 
+# begins with $$ASSET_REPO$$, then the repo is deposited in the path specified by 
+# the CY_GETLIBS_SHARED_PATH variable. The default location is one directory level 
+# above the current app directory.
+# This is used with CY_GETLIBS_SHARED_NAME variable, which specifies the directory name.
+CY_GETLIBS_SHARED_PATH=../
+
+# Directory name of the shared repo location.
+#
+CY_GETLIBS_SHARED_NAME=mtb_shared
 
 # Absolute path to the compiler's "bin" directory.
 #
