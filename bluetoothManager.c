@@ -1,26 +1,25 @@
-#include "cy_pdl.h"
-#include "cyhal.h"
-#include "cybsp.h"
-#include "cy_retarget_io.h"
-#include "FreeRTOS.h"
-#include "task.h"
-#include "timers.h"
-#include "queue.h"
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "cybsp.h"
+
+#include "FreeRTOS.h"
+
 #include "bluetoothManager.h"
 #include "wiced_bt_stack.h"
-#include "app_bt_cfg.h"
 #include "wiced_bt_dev.h"
 #include "wiced_bt_trace.h"
-
+#include "wiced_timer.h"
 #include "btutil.h"
 
+#include "advDatabase.h"
+
+#include "queue.h"
 static QueueHandle_t btm_cmdQueue;
+static wiced_timer_ext_t btm_mgmtQueueTimer;
 
 typedef enum {
-	BTM_PRINT_TABLE,
+	BTM_SCAN,
 } btm_cmd_t;
 
 typedef struct {
@@ -28,93 +27,9 @@ typedef struct {
 	void *data;
 } btm_cmdMsg_t;
 
-typedef struct {
-	uint8_t mac[6];
-	TickType_t time;
-	int8_t rssi;
-	int len;
-	uint8_t *data;
-} collect_t;
+void btm_advCallback(wiced_bt_ble_scan_results_t *p_scan_result, uint8_t *p_adv_data);
 
-#define MAX_DATA 40
-collect_t myData[MAX_DATA];
-static int count=0;
-
-
-static void btm_addDevice(wiced_bt_ble_scan_results_t *p_scan_result, uint8_t *packet)
-{
-
-	int len = btutil_adv_len(packet);
-	int element;
-
-	element = count;
-
-	for(int i=0;i<count;i++)
-	{
-		if(memcmp(myData[i].mac,p_scan_result->remote_bd_addr,6) == 0)
-		{
-			if(myData[i].len != len+1)
-			{
-				free(myData[i].data);
-				myData[i].data = 0;
-			}
-			element = i;
-
-			break;
-		}
-	}
-
-	if(myData[element].data == 0)
-	{
-		myData[element].data = malloc(len+1);
-		if(myData[element].data == 0)
-		{
-			printf("Malloc failed\n");
-			CY_ASSERT(0);
-		}
-	}
-
-	memcpy(myData[element].data,packet,len+1);
-
-	myData[element].time = xTaskGetTickCount();
-	myData[element].len = len+1;
-
-	myData[element].rssi = p_scan_result->rssi;
-
-	if(element == count)
-	{
-		memcpy(myData[element].mac,p_scan_result->remote_bd_addr,6);
-		printf("Added %02i Mac ",count);
-		btutil_printBDaddress(myData[element].mac);
-		printf("\n");
-
-		if(count <MAX_DATA)
-			count = count + 1;
-		else
-			printf("max count\n");
-	}
-
-}
-
-static void btm_dumpTable()
-{
-	printf("\n------------------------------------------------------------------------------------------------------------------------------\n");
-	printf("##   Time RSSI       MAC         Data\n");
-	printf("------------------------------------------------------------------------------------------------------------------------------\n");
-	for(int i=0;i<count;i++)
-	{
-		float time=0;
-		time = (float)(xTaskGetTickCount() - myData[i].time) / 1000;
-
-		printf("%02d %6.1f %04d ",i,time,myData[i].rssi);
-		btutil_printBDaddress(myData[i].mac);
-		printf(" ");
-		btutil_adv_printPacketBytes(myData[i].data);
-		printf("\n");
-	}
-}
-
-static void btm_processBluetoothAppQueue(TimerHandle_t xTimer)
+static void btm_processBluetoothAppQueue()
 {
 	btm_cmdMsg_t msg;
 
@@ -125,13 +40,22 @@ static void btm_processBluetoothAppQueue(TimerHandle_t xTimer)
 	 {
 		 switch(msg.cmd)
 		 {
-		 case BTM_PRINT_TABLE:
-			 btm_dumpTable();
+		 case BTM_SCAN:
+            wiced_bt_ble_observe((wiced_bool_t)msg.data,0,btm_advCallback);
 			 break;
 		 }
 	 }
 }
 
+void btm_advCallback(wiced_bt_ble_scan_results_t *p_scan_result, uint8_t *p_adv_data)
+{
+    wiced_bt_ble_scan_results_t *scan_result = malloc(sizeof(wiced_bt_ble_scan_results_t));
+    uint8_t *data = malloc(32);
+   
+    memcpy(data,p_adv_data,32);
+    memcpy(scan_result,p_scan_result->remote_bd_addr,BD_ADDR_LEN);
+    adb_addAdv(scan_result,data);
+}
 
 /**************************************************************************************************
 * Function Name: app_bt_management_callback()
@@ -155,40 +79,26 @@ wiced_result_t app_bt_management_callback(wiced_bt_management_evt_t event, wiced
     switch (event)
     {
         case BTM_ENABLED_EVT:
+            printf("Started BT Stack Succesfully\n");
+            btm_cmdQueue = xQueueCreate(10,sizeof(btm_cmdMsg_t));
+            wiced_init_timer_ext (&btm_mgmtQueueTimer, btm_processBluetoothAppQueue,0, WICED_TRUE);
+            wiced_start_timer_ext (&btm_mgmtQueueTimer, 50);
+            wiced_bt_ble_observe(WICED_TRUE,0,btm_advCallback);
 
-        	memset(myData,0,sizeof(myData));
-
-            if (WICED_BT_SUCCESS == p_event_data->enabled.status)
-            {
-				wiced_bt_ble_observe (WICED_TRUE, 0,btm_addDevice);
-                btm_cmdQueue = xQueueCreate( 5, sizeof(btm_cmdMsg_t));
-
-                TimerHandle_t timerHandle = xTimerCreate("Process Queue",100,true,0,btm_processBluetoothAppQueue);
-                xTimerStart(timerHandle,0);
-            }
-            else
-            {
-            	printf("Error enabling BTM_ENABLED_EVENT\n");
-            }
-
-            break;
-
-        case BTM_BLE_SCAN_STATE_CHANGED_EVT:
-			printf("Scan State :%s\n",btutil_getBLEAdvertModeName(p_event_data->ble_scan_state_changed));
         break;
 
         default:
-            printf("Unhandled Bluetooth Management Event: 0x%x %s\n", event, btutil_getBTEventName(event));
+            printf("Unhandled Bluetooth Management Event: %s\n", btutil_getBTEventName(event));
             break;
     }
 
     return result;
 }
 
-
-void btm_printTable()
+void btm_cmdScan(bool enable)
 {
-	btm_cmdMsg_t msg;
-	msg.cmd = BTM_PRINT_TABLE;
-	xQueueSend(btm_cmdQueue, &msg,0);
+    btm_cmdMsg_t msg;
+    msg.cmd = BTM_SCAN;
+    msg.data = (void *)enable;
+  	xQueueSend(btm_cmdQueue, &msg,0);
 }

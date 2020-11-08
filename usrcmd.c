@@ -31,18 +31,21 @@
  */
 
 
-
+#include "ntopt.h"
+#include "ntlibc.h"
+#include "ntshell.h"
 #include <stdio.h>
 
 #include "ntshell.h"
 #include "ntlibc.h"
 #include "psoc6_ntshell_port.h"
-#include "ntopt.h"
-#include "ntlibc.h"
-#include "ntshell.h"
+
+#include "FreeRTOS.h"
+#include "task.h"
 
 #include "bluetoothManager.h"
-#include "task.h"
+
+#include "advDatabase.h"
 
 static ntshell_t ntshell;
 
@@ -52,14 +55,14 @@ static int usrcmd_ntopt_callback(int argc, char **argv, void *extobj);
 static int usrcmd_help(int argc, char **argv);
 static int usrcmd_info(int argc, char **argv);
 static int usrcmd_clear(int argc, char **argv);
-static int usrcmd_printargs(int argc, char **argv);
-static int usrcmd_printTable(int argc,char **argv);
+static int usrcmd_pargs(int argc, char **argv);
 #ifdef configUSE_TRACE_FACILITY
 #if configUSE_STATS_FORMATTING_FUNCTIONS ==1
 static int usrcmd_list(int argc, char **argv);
 #endif
 #endif
-
+static int usrcmd_scan(int argc, char **argv);
+static int usrcmd_print(int argc, char **argv);
 
 typedef struct {
     char *cmd;
@@ -71,15 +74,17 @@ static const cmd_table_t cmdlist[] = {
     { "help", "This is a description text string for help command.", usrcmd_help },
     { "info", "This is a description text string for info command.", usrcmd_info },
     { "clear", "Clear the screen", usrcmd_clear },
-    { "pargs","print the list of arguments", usrcmd_printargs},
-    #ifdef configUSE_TRACE_FACILITY 
+    { "pargs","print the list of arguments", usrcmd_pargs},
+#ifdef configUSE_TRACE_FACILITY 
 #if configUSE_STATS_FORMATTING_FUNCTIONS ==1
     { "tasks","print the list of RTOS Tasks", usrcmd_list},
 #endif
 #endif
-    { "pt","print the table of bd data", usrcmd_printTable},
+    { "scan","scan [on|off]", usrcmd_scan},
+    { "print","print [entry #]", usrcmd_print},
 
 };
+
 
 void usrcmd_task()
 {
@@ -158,7 +163,7 @@ static int usrcmd_clear(int argc, char **argv)
     return 0;
 }
 
-static int usrcmd_printargs(int argc, char **argv)
+static int usrcmd_pargs(int argc, char **argv)
 {
     printf("ARGC = %d\n",argc);
 
@@ -190,9 +195,41 @@ static int usrcmd_list(int argc,char **argv)
 #endif
 
 
-static int usrcmd_printTable(int argc,char **argv)
+static int usrcmd_scan(int argc, char **argv)
 {
-	btm_printTable();
-	return 0;
+
+    if(argc != 2)
+        return 0;
+
+    if(strcmp(argv[1],"on") == 0)
+    {
+        btm_cmdScan(true);
+    }
+    else if(strcmp(argv[1],"off") == 0)
+    {
+        btm_cmdScan(false);
+
+    }
+    return 0;
+
 }
 
+
+static int usrcmd_print(int argc, char **argv)
+{
+
+    if(argc == 1)
+    {
+        adb_print(-1);
+        return 0;
+    }
+
+    if(argc == 2)
+    {
+        int val;
+        sscanf(argv[1],"%d",&val);
+        adb_print(val);
+    }
+
+    return 0;
+}

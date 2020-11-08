@@ -7,7 +7,7 @@
 #
 ################################################################################
 # \copyright
-# Copyright 2018-2019 Cypress Semiconductor Corporation
+# Copyright 2018-2020 Cypress Semiconductor Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,12 +28,14 @@
 # Basic Configuration
 ################################################################################
 
-# Target board/hardware
+# Target board/hardware (BSP).
+# To change the target, use the Library manager ('make modlibs' from command line).
+# If TARGET is manually edited, ensure TARGET_<BSP>.mtb with a valid URL exists
+# in the application, and run 'make getlibs' to fetch BSP contents.
 TARGET=CY8CKIT-062S2-43012
 
 # Name of application (used to derive name of final linked file).
-APPNAME=mtb-example-psoc6-empty-app
-
+APPNAME=AnyCloudBLEScanner
 # Name of toolchain to use. Options include:
 #
 # GCC_ARM -- GCC 7.2.1, provided with ModusToolbox IDE
@@ -45,8 +47,10 @@ TOOLCHAIN=GCC_ARM
 
 # Default build configuration. Options include:
 #
-# Debug   -- build with minimal optimizations, focus on debugging.
+# Debug -- build with minimal optimizations, focus on debugging.
 # Release -- build with full optimizations
+# Custom -- build with custom configuration, set the optimization flag in CFLAGS
+
 CONFIG=Debug
 
 # If set to "true" or "1", display full command-lines when building.
@@ -82,9 +86,7 @@ SOURCES=
 # directories (without a leading -I).
 INCLUDES=
 
-
 # Add additional defines to the build process (without a leading -D).
-# CY_RTOS_AWARE
 DEFINES=CY_RETARGET_IO_CONVERT_LF_TO_CRLF
 
 # Select softfp or hardfp floating point. Default is softfp.
@@ -135,7 +137,7 @@ CY_APP_PATH=
 
 # Relative path to the shared repo location.
 #
-# All .mtb files have the format, <URI>#<COMMIT>#<LOCATION>. If the <LOCATION> field 
+# All .mtb files have the format, <URI><COMMIT><LOCATION>. If the <LOCATION> field 
 # begins with $$ASSET_REPO$$, then the repo is deposited in the path specified by 
 # the CY_GETLIBS_SHARED_PATH variable. The default location is one directory level 
 # above the current app directory.
