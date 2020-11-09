@@ -62,7 +62,8 @@ static int usrcmd_list(int argc, char **argv);
 #endif
 #endif
 static int usrcmd_scan(int argc, char **argv);
-static int usrcmd_print(int argc, char **argv);
+static int usrcmd_printRaw(int argc, char **argv);
+static int usrcmd_printDecode(int argc, char **argv);
 
 typedef struct {
     char *cmd;
@@ -81,7 +82,8 @@ static const cmd_table_t cmdlist[] = {
 #endif
 #endif
     { "scan","scan [on|off]", usrcmd_scan},
-    { "print","print [entry #]", usrcmd_print},
+    { "print","print [entry #]", usrcmd_printRaw},
+    { "decode","deocde [entry #]", usrcmd_printDecode},
 
 };
 
@@ -215,21 +217,37 @@ static int usrcmd_scan(int argc, char **argv)
 }
 
 
-static int usrcmd_print(int argc, char **argv)
+static int usrcmd_printRaw(int argc, char **argv)
 {
 
     if(argc == 1)
     {
-        adb_print(-1);
-        return 0;
+        adb_printRaw(-1);
     }
 
     if(argc == 2)
     {
         int val;
         sscanf(argv[1],"%d",&val);
-        adb_print(val);
+        adb_printRaw(val);
     }
 
+    return 0;
+}
+
+
+static int usrcmd_printDecode(int argc, char **argv)
+{
+    if(argc == 1)
+    {
+        adb_printDecode(-1);
+    }
+
+    if(argc == 2)
+    {
+        int val;
+        sscanf(argv[1],"%d",&val);
+        adb_printDecode(val);
+    }
     return 0;
 }

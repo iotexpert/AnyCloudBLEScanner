@@ -32,7 +32,8 @@
 # To change the target, use the Library manager ('make modlibs' from command line).
 # If TARGET is manually edited, ensure TARGET_<BSP>.mtb with a valid URL exists
 # in the application, and run 'make getlibs' to fetch BSP contents.
-TARGET=CY8CKIT-062S2-43012
+TARGET=CYW9P62S1-43438EVB-01
+#TARGET=CY8CPROTO-062-4343W
 
 # Name of application (used to derive name of final linked file).
 APPNAME=AnyCloudBLEScanner
