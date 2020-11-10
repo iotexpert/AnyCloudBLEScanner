@@ -44,11 +44,16 @@ static int adb_db_find(wiced_bt_device_address_t *add)
     return rval;
 }
 
-static void adb_db_printRawPacket(int entry)
+typedef enum {
+    ADB_PRINT_METHOD_BYTES,
+    ADB_PRINT_METHOD_DECODE,
+} adb_print_method_t;
+
+static void adb_db_print(adb_print_method_t method,int entry)
 {
     int start,end;
  
-    if(entry == -1)
+    if(entry < 0)
     {
         start = 0;
         end = adb_db_count;
@@ -67,9 +72,19 @@ static void adb_db_printRawPacket(int entry)
     
         printf("%02d MAC: ",i);
         btutil_printBDaddress(adb_database[i].result->remote_bd_addr);
-        printf(" Data: ");
-        btutil_adv_printPacketBytes(adb_database[i].data);
+        switch(method)
+        {
+        
+        case ADB_PRINT_METHOD_BYTES:
+            printf(" Data: ");
+            btutil_adv_printPacketBytes(adb_database[i].data);
+        break;
 
+        case ADB_PRINT_METHOD_DECODE:
+            printf("\n");
+            btutil_adv_printPacketDecode(adb_database[i].data);
+        break;
+        } 
         printf("\n");
     }
 }
@@ -83,7 +98,7 @@ static void adb_db_add(wiced_bt_ble_scan_results_t *scan_result,uint8_t *data)
         
         adb_database[adb_db_count].result = scan_result;
         adb_database[adb_db_count].data = data;
-        adb_db_printRawPacket(adb_db_count);
+        adb_db_print(ADB_PRINT_METHOD_BYTES,adb_db_count);
         adb_db_count = adb_db_count + 1;
         if(adb_db_count == ADB_MAX_SIZE)
         {
@@ -98,6 +113,7 @@ static void adb_db_add(wiced_bt_ble_scan_results_t *scan_result,uint8_t *data)
     }
 }
 
+#if 0
 static void adb_printDecodePacket(int entry)
 {
     int start,end;
@@ -126,6 +142,7 @@ static void adb_printDecodePacket(int entry)
         printf("\n");
     }
 }
+#endif
 
 void adb_task(void *arg)
 {
@@ -150,10 +167,11 @@ void adb_task(void *arg)
                     adb_db_add(scan_result,data);
                 break;
                 case ADB_PRINT_RAW:
-                    adb_db_printRawPacket((int)msg.data0);
+//                    adb_db_printRawPacket((int)msg.data0);
+                    adb_db_print(ADB_PRINT_METHOD_BYTES,(int)msg.data0);
                 break;
                 case ADB_PRINT_DECODE:
-                    adb_printDecodePacket((int)msg.data0);
+                    adb_db_print(ADB_PRINT_METHOD_DECODE,(int)msg.data0);
                 break;
             }
 
