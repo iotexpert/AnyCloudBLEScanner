@@ -62,8 +62,11 @@ static int usrcmd_list(int argc, char **argv);
 #endif
 #endif
 static int usrcmd_scan(int argc, char **argv);
-static int usrcmd_printRaw(int argc, char **argv);
-static int usrcmd_printDecode(int argc, char **argv);
+static int usrcmd_print(int argc, char **argv);
+static int usrcmd_decode(int argc, char **argv);
+static int usrcmd_watch(int argc, char **argv);
+static int usrcmd_record(int argc, char **argv);
+static int usrcmd_erase(int argc, char **argv);
 
 typedef struct {
     char *cmd;
@@ -82,9 +85,11 @@ static const cmd_table_t cmdlist[] = {
 #endif
 #endif
     { "scan","scan [on|off]", usrcmd_scan},
-    { "print","print [entry #]", usrcmd_printRaw},
-    { "decode","deocde [entry #]", usrcmd_printDecode},
-
+    { "print","print [entry #]", usrcmd_print},
+    { "decode","deocde [entry #]", usrcmd_decode},
+    { "watch","watch # | all | clear", usrcmd_watch},
+    { "record","record #", usrcmd_record},
+    { "erase","erase [#]", usrcmd_erase},
 };
 
 
@@ -217,37 +222,97 @@ static int usrcmd_scan(int argc, char **argv)
 }
 
 
-static int usrcmd_printRaw(int argc, char **argv)
+static int usrcmd_print(int argc, char **argv)
 {
 
     if(argc == 1)
     {
-        adb_printRaw(-1);
+        adb_print(-1);
     }
 
     if(argc == 2)
     {
         int val;
         sscanf(argv[1],"%d",&val);
-        adb_printRaw(val);
+        adb_print(val);
     }
 
     return 0;
 }
 
 
-static int usrcmd_printDecode(int argc, char **argv)
+static int usrcmd_decode(int argc, char **argv)
 {
     if(argc == 1)
     {
-        adb_printDecode(-1);
+        adb_decode(-1);
     }
 
     if(argc == 2)
     {
         int val;
         sscanf(argv[1],"%d",&val);
-        adb_printDecode(val);
+        adb_decode(val);
+    }
+    return 0;
+}
+
+static int usrcmd_watch(int argc, char **argv)
+{
+
+    if(argc == 2 && !strcmp(argv[1],"all"))
+    {
+        adb_watch(ADB_WATCH_ALL); // all
+        return 0;
+    }
+
+
+    if(argc == 2 && !strcmp(argv[1],"clear"))
+    {
+        adb_watch(ADB_WATCH_CLEAR);
+        return 0;
+    }
+
+    if(argc == 2)
+    {
+        int i;
+        sscanf(argv[1],"%d",&i);
+        adb_watch(i);
+        return 0;
+    }
+
+    return 0;
+}
+
+
+// erase
+// erase #
+static int usrcmd_erase(int argc, char **argv)
+{
+    if(argc > 2)
+    {
+        return 0;
+    }
+
+    if(argc == 1)
+    {
+        adb_erase(ADB_ERASE_ALL);
+        return 0;
+    }
+
+    int i;
+    sscanf(argv[1],"%d",&i);
+    adb_erase(i);
+    return 0;    
+
+}
+// record = toggles
+static int usrcmd_record(int argc, char **argv)
+{
+    if(argc == 1)
+    {
+        adb_record(-1);
+        return 0;
     }
     return 0;
 }
