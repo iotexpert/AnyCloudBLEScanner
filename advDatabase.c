@@ -16,7 +16,6 @@ typedef enum {
     ADB_WATCH,
     ADB_ERASE,
     ADB_RECORD,
-    ADB_FILTER,
 } adb_cmd_t;
 
 typedef struct
@@ -36,7 +35,6 @@ typedef struct {
     wiced_bt_ble_scan_results_t *result;
     int listCount;
     bool record;
-    bool filter;
     int numSeen;
     adb_adv_data_t *list;
 } adb_adv_t ;
@@ -119,12 +117,10 @@ static void adb_db_add(wiced_bt_ble_scan_results_t *scan_result,uint8_t *data)
         adb_database[adb_db_count].result = scan_result;
         adb_database[adb_db_count].listCount = 1;
         adb_database[adb_db_count].record = false;
-        adb_database[adb_db_count].filter = false;
         adb_database[adb_db_count].numSeen = 1;
         
  
         adb_adv_data_t *current = malloc(sizeof(adb_adv_data_t));
-        current->checksum = 0;
         current->next = 0;
         current->data = data;
 
@@ -146,7 +142,6 @@ static void adb_db_add(wiced_bt_ble_scan_results_t *scan_result,uint8_t *data)
 
         adb_adv_data_t *current = malloc(sizeof(adb_adv_data_t));
 
-        current->checksum = 0;
         current->next = (struct adb_adv_data_t *)adb_database[entry].list;
         current->data = data;
         adb_database[entry].listCount += 1;
@@ -266,8 +261,7 @@ void adb_task(void *arg)
                     printf("Record %s Buffer Entries Free=%d\n",adb_recording?"ON":"OFF",
                         ADB_RECORD_MAX-adb_db_record_count);
                 break;
-                case ADB_FILTER:
-                break;
+
             }
 
         }
@@ -290,4 +284,3 @@ inline void adb_decode(int entry) { adb_queueCmd(ADB_PRINT_DECODE,(void*)entry,(
 inline void adb_watch(int entry) { adb_queueCmd(ADB_WATCH,(void*)entry,(void *)0); }
 inline void adb_record(int packets) { adb_queueCmd(ADB_RECORD,(void*)packets,(void *)0); }
 inline void adb_erase(int entry) { adb_queueCmd(ADB_ERASE,(void*)entry,(void *)0); }
-inline void adb_filter(int entry,bool filter) { adb_queueCmd(ADB_FILTER,(void*)entry,(void *)filter); }

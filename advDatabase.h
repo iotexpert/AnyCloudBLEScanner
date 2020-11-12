@@ -14,4 +14,3 @@ void adb_record(int packets);
 #define ADB_ERASE_ALL -1
 void adb_erase(int entry);
 
-void adb_filter(int entry,bool filter);
