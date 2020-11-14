@@ -67,6 +67,7 @@ static int usrcmd_decode(int argc, char **argv);
 static int usrcmd_watch(int argc, char **argv);
 static int usrcmd_record(int argc, char **argv);
 static int usrcmd_erase(int argc, char **argv);
+static int usrcmd_filter(int argc, char **argv);
 
 typedef struct {
     char *cmd;
@@ -90,6 +91,8 @@ static const cmd_table_t cmdlist[] = {
     { "watch","watch # | all | clear", usrcmd_watch},
     { "record","record #", usrcmd_record},
     { "erase","erase [#]", usrcmd_erase},
+    { "filter","filter # | all | clear", usrcmd_filter},
+
 };
 
 
@@ -314,5 +317,32 @@ static int usrcmd_record(int argc, char **argv)
         adb_record(-1);
         return 0;
     }
+    return 0;
+}
+
+static int usrcmd_filter(int argc, char **argv)
+{
+
+    if(argc == 2 && !strcmp(argv[1],"all"))
+    {
+        adb_filter(ADB_FILTER_ALL); // all
+        return 0;
+    }
+
+
+    if(argc == 2 && !strcmp(argv[1],"clear"))
+    {
+        adb_filter(ADB_FILTER_CLEAR);
+        return 0;
+    }
+
+    if(argc == 2)
+    {
+        int i;
+        sscanf(argv[1],"%d",&i);
+        adb_filter(i);
+        return 0;
+    }
+
     return 0;
 }
