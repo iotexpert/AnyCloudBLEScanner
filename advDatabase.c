@@ -27,15 +27,14 @@ typedef struct
 
 typedef struct {
     uint8_t *data;
-    int count;
     struct adb_adv_data_t *next;
 } adb_adv_data_t;
 
 typedef struct {
     wiced_bt_ble_scan_results_t *result;
-    int listCount;
     bool record;
     int numSeen;
+    int listCount;
     adb_adv_data_t *list;
 } adb_adv_t ;
 
@@ -44,7 +43,7 @@ static adb_adv_t adb_database[ADB_MAX_SIZE];
 static int adb_db_count=0;
 
 #define ADB_RECORD_MAX (100)
-static int adb_db_record_count = 0;
+static int adb_recording_count = 0;
 static bool adb_recording = false;
 
 static int adb_db_find(wiced_bt_device_address_t *add)
@@ -118,8 +117,7 @@ static void adb_db_add(wiced_bt_ble_scan_results_t *scan_result,uint8_t *data)
         adb_database[adb_db_count].listCount = 1;
         adb_database[adb_db_count].record = false;
         adb_database[adb_db_count].numSeen = 1;
-        
- 
+
         adb_adv_data_t *current = malloc(sizeof(adb_adv_data_t));
         current->next = 0;
         current->data = data;
@@ -137,26 +135,24 @@ static void adb_db_add(wiced_bt_ble_scan_results_t *scan_result,uint8_t *data)
             adb_db_print(ADB_PRINT_METHOD_BYTES,adb_db_count-1);
         }
     }
-    else if(adb_database[entry].record && adb_db_record_count<ADB_RECORD_MAX && adb_recording)
+    else if(adb_database[entry].record && adb_recording_count<ADB_RECORD_MAX && adb_recording)
     {
+        adb_database[entry].numSeen += 1;
 
         adb_adv_data_t *current = malloc(sizeof(adb_adv_data_t));
-
         current->next = (struct adb_adv_data_t *)adb_database[entry].list;
         current->data = data;
         adb_database[entry].listCount += 1;
         adb_database[entry].list = current;
+
         adb_db_print(ADB_PRINT_METHOD_BYTES,entry);
 
-        adb_db_record_count += 1;
-        if(adb_db_record_count == ADB_RECORD_MAX)
+        adb_recording_count += 1;
+        if(adb_recording_count == ADB_RECORD_MAX)
         {
             adb_recording = false;
             printf("Recording buffer full\n");
         }
-
-        adb_database[entry].numSeen += 1;
-
     }
     else
     {
@@ -187,7 +183,7 @@ static void adb_db_watch(int entry)
         return;
     }
 
-    if(entry > adb_db_count) // ARH could be a bug right here
+    if(entry > adb_db_count-1 || entry < ADB_WATCH_CLEAR)
     {
         printf("Record doesnt exist: %d\n",entry);
         return;      
@@ -196,8 +192,14 @@ static void adb_db_watch(int entry)
 
 }
 
-void adb_eraseEntry(int entry)
+static void adb_eraseEntry(int entry)
 {
+    if(entry > adb_db_count-1 || entry<0)
+    {
+        printf("Erase Entry Not Found %d\n",entry);
+        return;
+    }
+
     adb_adv_data_t *ptr;
     ptr = (adb_adv_data_t *)adb_database[entry].list->next;
     adb_database[entry].list->next = 0;
@@ -208,7 +210,7 @@ void adb_eraseEntry(int entry)
         free(ptr->data);
         free(ptr);
         adb_database[entry].listCount -= 1;
-        adb_db_record_count -= 1;
+        adb_recording_count -= 1;
         ptr = next;
     }
 }
@@ -254,12 +256,12 @@ void adb_task(void *arg)
                     else
                         adb_eraseEntry((int)msg.data0);
 
-                    printf("Record Buffer Free %d\n",ADB_RECORD_MAX-adb_db_record_count);
+                    printf("Record Buffer Free %d\n",ADB_RECORD_MAX-adb_recording_count);
                 break;
                 case ADB_RECORD:
                     adb_recording = !adb_recording;
                     printf("Record %s Buffer Entries Free=%d\n",adb_recording?"ON":"OFF",
-                        ADB_RECORD_MAX-adb_db_record_count);
+                        ADB_RECORD_MAX-adb_recording_count);
                 break;
 
             }
