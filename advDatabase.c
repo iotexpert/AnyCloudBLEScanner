@@ -130,8 +130,8 @@ static void adb_db_add(wiced_bt_ble_scan_results_t *scan_result,uint8_t *data)
  
     int entry = adb_db_find(&scan_result->remote_bd_addr);
     
-    // If it is NOT found
-    if(entry == -1)
+    // If it is NOT found && you have room
+    if(entry == -1 && adb_db_count<ADB_MAX_SIZE)
     {
         adb_database[adb_db_count].result = scan_result;
         adb_database[adb_db_count].listCount = 1;
@@ -146,16 +146,9 @@ static void adb_db_add(wiced_bt_ble_scan_results_t *scan_result,uint8_t *data)
 
         adb_database[adb_db_count].list = current;
 
-        adb_db_count = adb_db_count + 1;
-        if(adb_db_count == ADB_MAX_SIZE)
-        {
-            printf("ADV Table Max Size\n");
-            adb_db_count = adb_db_count - 1;
-        }
-        else
-        {    
-            adb_db_print(ADB_PRINT_METHOD_BYTES,false,adb_db_count-1);
-        }
+        adb_db_count = adb_db_count + 1;    
+        adb_db_print(ADB_PRINT_METHOD_BYTES,false,adb_db_count-1);
+        
     }
     else if(adb_database[entry].record && adb_recording_count<ADB_RECORD_MAX && adb_recording)
     {
