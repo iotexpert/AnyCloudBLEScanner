@@ -7,6 +7,7 @@
 
 #include "btutil.h"
 #include "advDatabase.h"
+#include "task.h"
 
 static QueueHandle_t adb_cmdQueue;
 typedef enum {
@@ -28,16 +29,18 @@ typedef struct
 
 typedef struct {
     uint8_t *data;
-    int count;
+    int numSeen;
+    TickType_t lastSeen;
     struct adb_adv_data_t *next;
 } adb_adv_data_t;
 
 typedef struct {
     wiced_bt_ble_scan_results_t *result;
-    bool record;
+    bool watch;
     bool filter;
     int numSeen;
     int listCount;
+    TickType_t lastSeen;
     adb_adv_data_t *list;
 } adb_adv_t ;
 
@@ -45,7 +48,7 @@ typedef struct {
 static adb_adv_t adb_database[ADB_MAX_SIZE];
 static int adb_db_count=0;
 
-#define ADB_RECORD_MAX (100)
+#define ADB_RECORD_MAX (10)
 static int adb_recording_count = 0;
 static bool adb_recording = false;
 
@@ -71,10 +74,15 @@ typedef enum {
 
 static void adb_db_printEntry(adb_print_method_t method, int entry, adb_adv_data_t *adv_data)
 {
-    printf("%c%c%02d %05d %03d MAC: ",adb_database[entry].record?'W':' ',
+    float time = ((float)xTaskGetTickCount() - (float)(adv_data->lastSeen))/1000;
+
+    printf("%c%c%02d %05d %03d %6.1f ",adb_database[entry].watch?'W':' ',
     adb_database[entry].filter?'F':' ',
-    entry,adb_database[entry].numSeen,adb_database[entry].listCount);
+    entry,adb_database[entry].numSeen,adb_database[entry].listCount,
+    time);
+
     btutil_printBDaddress(adb_database[entry].result->remote_bd_addr);
+
 
     switch(method)
     {
@@ -125,34 +133,250 @@ static void adb_db_print(adb_print_method_t method,bool history,int entry)
     }
 }
 
+
 static void adb_db_add(wiced_bt_ble_scan_results_t *scan_result,uint8_t *data)
 {
- 
+
+    TickType_t timeSeen = xTaskGetTickCount();
+
     int entry = adb_db_find(&scan_result->remote_bd_addr);
+
+    // If there is a new entry and you ran out of space
+    if(entry == -1 && adb_db_count >= ADB_MAX_SIZE)
+    {
+        free(scan_result);
+        free(data);
+        return;
+    }
     
     // If it is NOT found && you have room
-    if(entry == -1 && adb_db_count<ADB_MAX_SIZE)
+    if(entry == -1)
     {
         adb_database[adb_db_count].result = scan_result;
         adb_database[adb_db_count].listCount = 1;
-        adb_database[adb_db_count].record = false;
+        adb_database[adb_db_count].watch = false;
         adb_database[adb_db_count].filter = true;
         adb_database[adb_db_count].numSeen = 1;
+        adb_database[adb_db_count].lastSeen = timeSeen;
 
         adb_adv_data_t *current = malloc(sizeof(adb_adv_data_t));
         current->next = 0;
         current->data = data;
-        current->count = 1;
+        current->numSeen = 1;
+        current->lastSeen = timeSeen;
 
         adb_database[adb_db_count].list = current;
 
         adb_db_count = adb_db_count + 1;    
         adb_db_print(ADB_PRINT_METHOD_BYTES,false,adb_db_count-1);
-        
+
+        return; 
     }
-    else if(adb_database[entry].record && adb_recording_count<ADB_RECORD_MAX && adb_recording)
+
+    adb_adv_data_t *updateItem=0; 
+
+    if(adb_database[entry].filter) // if filtering is on.
+    {
+        int len = btutil_adv_len(data); // ARH maybe a bug here
+        
+        for(adb_adv_data_t *list = adb_database[entry].list;list;list = (adb_adv_data_t *)list->next)
+        {
+            if(memcmp(list->data,data,len) == 0) // Found the data
+            {
+                updateItem = list;
+                break;
+            }
+        }
+        if(adb_database[entry].watch && adb_recording && updateItem == 0)
+            printf("Found new item\n");
+    }
+
+    // insert at the head
+    if( (adb_database[entry].watch && !adb_database[entry].filter && adb_recording && !updateItem) ||
+        (adb_database[entry].watch && !adb_database[entry].filter && adb_recording && updateItem) ||
+        (adb_database[entry].watch && adb_database[entry].filter && adb_recording && !updateItem)
+    )
+    {
+        adb_adv_data_t *updateItem = malloc(sizeof(adb_adv_data_t)); // make new data
+        updateItem->next = (struct adb_adv_data_t *)adb_database[entry].list;
+        updateItem->numSeen = 1;
+        updateItem->data = data;
+        updateItem->lastSeen = timeSeen;
+
+        adb_database[entry].list = updateItem;
+        adb_database[entry].numSeen += 1;
+        adb_database[entry].lastSeen = timeSeen;
+        adb_database[entry].listCount += 1;
+        free(scan_result);
+        
+        adb_db_print(ADB_PRINT_METHOD_BYTES,false,entry);
+
+
+        adb_recording_count += 1;
+        if(adb_recording_count == ADB_RECORD_MAX)
+        {
+            adb_recording = false;
+            printf("Recording buffer full\n");
+        }
+        return;
+    }
+
+    if(updateItem == 0)
+        updateItem = adb_database[entry].list;
+
+
+    adb_database[entry].numSeen += 1;
+    adb_database[entry].lastSeen = timeSeen;
+
+    updateItem->lastSeen = timeSeen;
+
+    int len = btutil_adv_len(data); // ARH maybe a bug here
+    if(memcmp(updateItem->data,data,len) == 0)
+    {
+        updateItem->numSeen += 1;
+    }
+    else
+    {
+        updateItem->numSeen = 1;   
+    }
+
+    free(updateItem->data);
+    updateItem->data = data;
+    free(scan_result);
+
+}
+
+#if 0
+static void adb_db_add(wiced_bt_ble_scan_results_t *scan_result,uint8_t *data)
+{
+
+    TickType_t timeSeen = xTaskGetTickCount();
+
+    int entry = adb_db_find(&scan_result->remote_bd_addr);
+
+    // If there is a new entry and you ran out of space
+    if(entry == -1 && adb_db_count >= ADB_MAX_SIZE)
+    {
+        free(scan_result);
+        free(data);
+        return;
+    }
+    
+    // If it is NOT found && you have room
+    if(entry == -1)
+    {
+        adb_database[adb_db_count].result = scan_result;
+        adb_database[adb_db_count].listCount = 1;
+        adb_database[adb_db_count].watch = false;
+        adb_database[adb_db_count].filter = true;
+        adb_database[adb_db_count].numSeen = 1;
+        adb_database[adb_db_count].lastSeen = timeSeen;
+
+        adb_adv_data_t *current = malloc(sizeof(adb_adv_data_t));
+        current->next = 0;
+        current->data = data;
+        current->numSeen = 1;
+        current->lastSeen = timeSeen;
+
+        adb_database[adb_db_count].list = current;
+
+        adb_db_count = adb_db_count + 1;    
+        adb_db_print(ADB_PRINT_METHOD_BYTES,false,adb_db_count-1);
+
+        return; 
+    }
+
+    // insert into the list
+    // overwrite head and return
+
+
+    // if watch off then overwrite and return
+    if(adb_database[entry].watch == false)  // overwrite and return
     {
         adb_database[entry].numSeen += 1;
+        adb_database[entry].lastSeen = timeSeen;
+
+        int len = btutil_adv_len(data); // ARH maybe a bug here
+        if(memcmp(adb_database[entry].list->data,data,len) == 0)
+            adb_database[entry].list->numSeen += 1;
+        else
+            adb_database[entry].list->numSeen = 1;
+        
+        adb_database[entry].list->lastSeen = timeSeen;
+
+        free(adb_database[entry].list->data);
+        adb_database[entry].list->data = data;
+        free(scan_result);
+    }
+
+    // the watch must be on....
+
+    // !filter recording then insert data return
+    if(adb_database[entry].filter == false && adb_recording)
+    {
+
+    }
+
+
+    // !filter !recording then overwrite and return (is this the best?)
+
+    if(adb_database[entry].filter == false && adb_recording == false) // overwrite and return
+    {
+        adb_database[entry].numSeen += 1;
+        adb_database[entry].lastSeen = timeSeen;
+
+        int len = btutil_adv_len(data); // ARH maybe a bug here
+        if(memcmp(adb_database[entry].list->data,data,len) == 0)
+            adb_database[entry].list->numSeen += 1;
+        else
+            adb_database[entry].list->numSeen = 1;
+        
+        adb_database[entry].list->lastSeen = timeSeen;
+
+        free(adb_database[entry].list->data);
+        adb_database[entry].list->data = data;
+        free(scan_result);
+    }
+
+
+
+// know that the fitler is on & watch on ... 
+// search for filter item
+    adb_adv_data_t *filterData=0;
+
+    if(adb_database[entry].filter) // if filtering is on.
+    {
+        int len = btutil_adv_len(data); // ARH maybe a bug here
+        
+        for(adb_adv_data_t *list = adb_database[entry].list;list;list = (adb_adv_data_t *)list->next)
+        {
+            if(memcmp(list->data,data,len) == 0) // Found the data
+            {
+                filterData = list;
+                break;
+            }
+        }
+    }
+
+
+// watch filter recording found then update the counts and return
+// watch filter !recording found then update the counts and return
+
+// watch filter recording !found then insert it into the list and return
+
+// watch filter !recording !found then overwrite and return (is this the best?)
+
+
+
+
+//
+//
+//
+
+    if(adb_database[entry].watch && adb_recording_count<ADB_RECORD_MAX && adb_recording)
+    {
+        adb_database[entry].numSeen += 1;
+        adb_database[entry].lastSeen = timeSeen;
 
         if(adb_database[entry].filter) // if filtering is on.
         {
@@ -162,7 +386,8 @@ static void adb_db_add(wiced_bt_ble_scan_results_t *scan_result,uint8_t *data)
             {
                 if(memcmp(list->data,data,len) == 0) // Found the data
                 {
-                    list->count += 1;
+                    list->numSeen += 1;
+                    list->lastSeen = timeSeen;
                     free(data);
                     free(scan_result);
                     return;
@@ -173,8 +398,8 @@ static void adb_db_add(wiced_bt_ble_scan_results_t *scan_result,uint8_t *data)
         adb_adv_data_t *current = malloc(sizeof(adb_adv_data_t));
         current->next = (struct adb_adv_data_t *)adb_database[entry].list;
         current->data = data;
-        current->count = 1;
-
+        current->numSeen = 1;
+        current->lastSeen = timeSeen;
 
         adb_database[entry].listCount += 1;
         adb_database[entry].list = current;
@@ -188,45 +413,10 @@ static void adb_db_add(wiced_bt_ble_scan_results_t *scan_result,uint8_t *data)
             printf("Recording buffer full\n");
         }
     }
-    else
-    {
-        adb_database[entry].numSeen += 1;
-        adb_database[entry].list->count += 1;        
-        free(adb_database[entry].list->data);
-        adb_database[entry].list->data = data;
-        free(scan_result);
-    }
-}
-
-static void adb_db_watch(int entry)
-{
-    if(entry == ADB_WATCH_ALL)
-    {
-        for(int i=0;i<adb_db_count;i++)
-        {
-            adb_database[i].record = true;
-        }
-        return;
-    }
-
-    if(entry == ADB_WATCH_CLEAR)
-    {
-        for(int i=0;i<adb_db_count;i++)
-        {
-            adb_database[i].record = false;
-        }
-        return;
-    }
-
-    if(entry > adb_db_count-1 || entry < ADB_WATCH_CLEAR)
-    {
-        printf("Record doesnt exist: %d\n",entry);
-        return;      
-    }
-    adb_database[entry].record = !adb_database[entry].record; 
 
 }
 
+#endif
 
 static void adb_db_filter(int entry)
 {
@@ -280,6 +470,38 @@ static void adb_eraseEntry(int entry)
     }
 }
 
+static void adb_db_watch(int entry)
+{
+    if(entry == ADB_WATCH_ALL)
+    {
+        for(int i=0;i<adb_db_count;i++)
+        {
+            adb_database[i].watch = true;
+        }
+        return;
+    }
+
+    if(entry == ADB_WATCH_CLEAR)
+    {
+        for(int i=0;i<adb_db_count;i++)
+        {
+            adb_database[i].watch = false;
+            adb_eraseEntry(i);
+        }
+        return;
+    }
+
+    if(entry > adb_db_count-1 || entry < ADB_WATCH_CLEAR)
+    {
+        printf("Record doesnt exist: %d\n",entry);
+        return;      
+    }
+    adb_database[entry].watch = !adb_database[entry].watch; 
+    
+    if(!adb_database[entry].watch)
+        adb_eraseEntry(entry);
+
+}
 
 
 void adb_task(void *arg)
@@ -327,6 +549,9 @@ void adb_task(void *arg)
                 break;
                 case ADB_RECORD:
                     adb_recording = !adb_recording;
+                    if(adb_recording_count >= ADB_RECORD_MAX)
+                        adb_recording = false;
+
                     printf("Record %s Buffer Entries Free=%d\n",adb_recording?"ON":"OFF",
                         ADB_RECORD_MAX-adb_recording_count);
                 break;
