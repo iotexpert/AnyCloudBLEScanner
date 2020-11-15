@@ -1,4 +1,3 @@
-
 #include "FreeRTOS.h"
 #include "queue.h"
 #include "wiced_bt_ble.h"
@@ -48,7 +47,7 @@ typedef struct {
 static adb_adv_t adb_database[ADB_MAX_SIZE];
 static int adb_db_count=0;
 
-#define ADB_RECORD_MAX (10)
+#define ADB_RECORD_MAX (100)
 static int adb_recording_count = 0;
 static bool adb_recording = false;
 
@@ -88,7 +87,7 @@ static void adb_db_printEntry(adb_print_method_t method, int entry, adb_adv_data
     {
     
     case ADB_PRINT_METHOD_BYTES:
-        printf(" Data: ");
+        printf(" ");
         btutil_adv_printPacketBytes(adv_data->data);
     break;
 
@@ -187,8 +186,6 @@ static void adb_db_add(wiced_bt_ble_scan_results_t *scan_result,uint8_t *data)
                 break;
             }
         }
-        if(adb_database[entry].watch && adb_recording && updateItem == 0)
-            printf("Found new item\n");
     }
 
     // insert at the head
@@ -245,178 +242,6 @@ static void adb_db_add(wiced_bt_ble_scan_results_t *scan_result,uint8_t *data)
     free(scan_result);
 
 }
-
-#if 0
-static void adb_db_add(wiced_bt_ble_scan_results_t *scan_result,uint8_t *data)
-{
-
-    TickType_t timeSeen = xTaskGetTickCount();
-
-    int entry = adb_db_find(&scan_result->remote_bd_addr);
-
-    // If there is a new entry and you ran out of space
-    if(entry == -1 && adb_db_count >= ADB_MAX_SIZE)
-    {
-        free(scan_result);
-        free(data);
-        return;
-    }
-    
-    // If it is NOT found && you have room
-    if(entry == -1)
-    {
-        adb_database[adb_db_count].result = scan_result;
-        adb_database[adb_db_count].listCount = 1;
-        adb_database[adb_db_count].watch = false;
-        adb_database[adb_db_count].filter = true;
-        adb_database[adb_db_count].numSeen = 1;
-        adb_database[adb_db_count].lastSeen = timeSeen;
-
-        adb_adv_data_t *current = malloc(sizeof(adb_adv_data_t));
-        current->next = 0;
-        current->data = data;
-        current->numSeen = 1;
-        current->lastSeen = timeSeen;
-
-        adb_database[adb_db_count].list = current;
-
-        adb_db_count = adb_db_count + 1;    
-        adb_db_print(ADB_PRINT_METHOD_BYTES,false,adb_db_count-1);
-
-        return; 
-    }
-
-    // insert into the list
-    // overwrite head and return
-
-
-    // if watch off then overwrite and return
-    if(adb_database[entry].watch == false)  // overwrite and return
-    {
-        adb_database[entry].numSeen += 1;
-        adb_database[entry].lastSeen = timeSeen;
-
-        int len = btutil_adv_len(data); // ARH maybe a bug here
-        if(memcmp(adb_database[entry].list->data,data,len) == 0)
-            adb_database[entry].list->numSeen += 1;
-        else
-            adb_database[entry].list->numSeen = 1;
-        
-        adb_database[entry].list->lastSeen = timeSeen;
-
-        free(adb_database[entry].list->data);
-        adb_database[entry].list->data = data;
-        free(scan_result);
-    }
-
-    // the watch must be on....
-
-    // !filter recording then insert data return
-    if(adb_database[entry].filter == false && adb_recording)
-    {
-
-    }
-
-
-    // !filter !recording then overwrite and return (is this the best?)
-
-    if(adb_database[entry].filter == false && adb_recording == false) // overwrite and return
-    {
-        adb_database[entry].numSeen += 1;
-        adb_database[entry].lastSeen = timeSeen;
-
-        int len = btutil_adv_len(data); // ARH maybe a bug here
-        if(memcmp(adb_database[entry].list->data,data,len) == 0)
-            adb_database[entry].list->numSeen += 1;
-        else
-            adb_database[entry].list->numSeen = 1;
-        
-        adb_database[entry].list->lastSeen = timeSeen;
-
-        free(adb_database[entry].list->data);
-        adb_database[entry].list->data = data;
-        free(scan_result);
-    }
-
-
-
-// know that the fitler is on & watch on ... 
-// search for filter item
-    adb_adv_data_t *filterData=0;
-
-    if(adb_database[entry].filter) // if filtering is on.
-    {
-        int len = btutil_adv_len(data); // ARH maybe a bug here
-        
-        for(adb_adv_data_t *list = adb_database[entry].list;list;list = (adb_adv_data_t *)list->next)
-        {
-            if(memcmp(list->data,data,len) == 0) // Found the data
-            {
-                filterData = list;
-                break;
-            }
-        }
-    }
-
-
-// watch filter recording found then update the counts and return
-// watch filter !recording found then update the counts and return
-
-// watch filter recording !found then insert it into the list and return
-
-// watch filter !recording !found then overwrite and return (is this the best?)
-
-
-
-
-//
-//
-//
-
-    if(adb_database[entry].watch && adb_recording_count<ADB_RECORD_MAX && adb_recording)
-    {
-        adb_database[entry].numSeen += 1;
-        adb_database[entry].lastSeen = timeSeen;
-
-        if(adb_database[entry].filter) // if filtering is on.
-        {
-            int len = btutil_adv_len(data);
-            
-            for(adb_adv_data_t *list = adb_database[entry].list;list;list = (adb_adv_data_t *)list->next)
-            {
-                if(memcmp(list->data,data,len) == 0) // Found the data
-                {
-                    list->numSeen += 1;
-                    list->lastSeen = timeSeen;
-                    free(data);
-                    free(scan_result);
-                    return;
-                }
-            }
-        }
-
-        adb_adv_data_t *current = malloc(sizeof(adb_adv_data_t));
-        current->next = (struct adb_adv_data_t *)adb_database[entry].list;
-        current->data = data;
-        current->numSeen = 1;
-        current->lastSeen = timeSeen;
-
-        adb_database[entry].listCount += 1;
-        adb_database[entry].list = current;
-
-        adb_db_print(ADB_PRINT_METHOD_BYTES,false,entry);
-
-        adb_recording_count += 1;
-        if(adb_recording_count == ADB_RECORD_MAX)
-        {
-            adb_recording = false;
-            printf("Recording buffer full\n");
-        }
-    }
-
-}
-
-#endif
 
 static void adb_db_filter(int entry)
 {
