@@ -18,3 +18,6 @@ void adb_erase(int entry);
 #define ADB_FILTER_ALL -1
 #define ADB_FILTER_CLEAR -2
 void adb_filter(int entry);
+
+void adb_sort(int entry);
+void adb_purge(int entry);

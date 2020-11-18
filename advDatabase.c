@@ -17,6 +17,8 @@ typedef enum {
     ADB_ERASE,
     ADB_RECORD,
     ADB_FILTER,
+    ADB_SORT,
+    ADB_PURGE,
 } adb_cmd_t;
 
 typedef struct
@@ -44,7 +46,7 @@ typedef struct {
 } adb_adv_t ;
 
 #define ADB_MAX_SIZE (40)
-static adb_adv_t adb_database[ADB_MAX_SIZE];
+static adb_adv_t *adb_database[ADB_MAX_SIZE];
 static int adb_db_count=0;
 
 #define ADB_RECORD_MAX (100)
@@ -56,7 +58,7 @@ static int adb_db_find(wiced_bt_device_address_t *add)
     int rval=-1;
     for(int i=0;i<adb_db_count;i++)
     {
-        if(memcmp(add,&adb_database[i].result->remote_bd_addr,BD_ADDR_LEN)==0)
+        if(memcmp(add,&adb_database[i]->result->remote_bd_addr,BD_ADDR_LEN)==0)
         {
             rval = i;
             break;
@@ -75,12 +77,12 @@ static void adb_db_printEntry(adb_print_method_t method, int entry, adb_adv_data
 {
     float time = ((float)xTaskGetTickCount() - (float)(adv_data->lastSeen))/1000;
 
-    printf("%c%c%02d %05d %03d %6.1f ",adb_database[entry].watch?'W':' ',
-    adb_database[entry].filter?'F':' ',
-    entry,adb_database[entry].numSeen,adb_database[entry].listCount,
+    printf("%c%c%02d %05d %03d %6.1f ",adb_database[entry]->watch?'W':' ',
+    adb_database[entry]->filter?'F':' ',
+    entry,adb_database[entry]->numSeen,adb_database[entry]->listCount,
     time);
 
-    btutil_printBDaddress(adb_database[entry].result->remote_bd_addr);
+    btutil_printBDaddress(adb_database[entry]->result->remote_bd_addr);
 
 
     switch(method)
@@ -122,13 +124,13 @@ static void adb_db_print(adb_print_method_t method,bool history,int entry)
     {
         if(history) // Then iterate through the linked list print all of the packets
         {
-            for(adb_adv_data_t *list = adb_database[i].list;list;list = (adb_adv_data_t *)list->next)
+            for(adb_adv_data_t *list = adb_database[i]->list;list;list = (adb_adv_data_t *)list->next)
             {
                 adb_db_printEntry(method,i,list);    
             }
         }
         else  // Just print the first packet in the list
-            adb_db_printEntry(method,i,adb_database[i].list);
+            adb_db_printEntry(method,i,adb_database[i]->list);
     }
 }
 
@@ -151,12 +153,13 @@ static void adb_db_add(wiced_bt_ble_scan_results_t *scan_result,uint8_t *data)
     // If it is NOT found && you have room
     if(entry == -1)
     {
-        adb_database[adb_db_count].result = scan_result;
-        adb_database[adb_db_count].listCount = 1;
-        adb_database[adb_db_count].watch = false;
-        adb_database[adb_db_count].filter = true;
-        adb_database[adb_db_count].numSeen = 1;
-        adb_database[adb_db_count].lastSeen = timeSeen;
+        adb_database[adb_db_count] = malloc(sizeof(adb_adv_t));
+        adb_database[adb_db_count]->result = scan_result;
+        adb_database[adb_db_count]->listCount = 1;
+        adb_database[adb_db_count]->watch = false;
+        adb_database[adb_db_count]->filter = true;
+        adb_database[adb_db_count]->numSeen = 1;
+        adb_database[adb_db_count]->lastSeen = timeSeen;
 
         adb_adv_data_t *current = malloc(sizeof(adb_adv_data_t));
         current->next = 0;
@@ -164,7 +167,7 @@ static void adb_db_add(wiced_bt_ble_scan_results_t *scan_result,uint8_t *data)
         current->numSeen = 1;
         current->lastSeen = timeSeen;
 
-        adb_database[adb_db_count].list = current;
+        adb_database[adb_db_count]->list = current;
 
         adb_db_count = adb_db_count + 1;    
         adb_db_print(ADB_PRINT_METHOD_BYTES,false,adb_db_count-1);
@@ -174,11 +177,11 @@ static void adb_db_add(wiced_bt_ble_scan_results_t *scan_result,uint8_t *data)
 
     adb_adv_data_t *updateItem=0; 
 
-    if(adb_database[entry].filter) // if filtering is on.
+    if(adb_database[entry]->filter) // if filtering is on.
     {
         int len = btutil_adv_len(data); // ARH maybe a bug here
         
-        for(adb_adv_data_t *list = adb_database[entry].list;list;list = (adb_adv_data_t *)list->next)
+        for(adb_adv_data_t *list = adb_database[entry]->list;list;list = (adb_adv_data_t *)list->next)
         {
             if(memcmp(list->data,data,len) == 0) // Found the data
             {
@@ -189,21 +192,21 @@ static void adb_db_add(wiced_bt_ble_scan_results_t *scan_result,uint8_t *data)
     }
 
     // insert at the head
-    if( (adb_database[entry].watch && !adb_database[entry].filter && adb_recording && !updateItem) ||
-        (adb_database[entry].watch && !adb_database[entry].filter && adb_recording && updateItem) ||
-        (adb_database[entry].watch && adb_database[entry].filter && adb_recording && !updateItem)
+    if( (adb_database[entry]->watch && !adb_database[entry]->filter && adb_recording && !updateItem) ||
+        (adb_database[entry]->watch && !adb_database[entry]->filter && adb_recording && updateItem) ||
+        (adb_database[entry]->watch && adb_database[entry]->filter && adb_recording && !updateItem)
     )
     {
         adb_adv_data_t *updateItem = malloc(sizeof(adb_adv_data_t)); // make new data
-        updateItem->next = (struct adb_adv_data_t *)adb_database[entry].list;
+        updateItem->next = (struct adb_adv_data_t *)adb_database[entry]->list;
         updateItem->numSeen = 1;
         updateItem->data = data;
         updateItem->lastSeen = timeSeen;
 
-        adb_database[entry].list = updateItem;
-        adb_database[entry].numSeen += 1;
-        adb_database[entry].lastSeen = timeSeen;
-        adb_database[entry].listCount += 1;
+        adb_database[entry]->list = updateItem;
+        adb_database[entry]->numSeen += 1;
+        adb_database[entry]->lastSeen = timeSeen;
+        adb_database[entry]->listCount += 1;
         free(scan_result);
         
         adb_db_print(ADB_PRINT_METHOD_BYTES,false,entry);
@@ -219,11 +222,11 @@ static void adb_db_add(wiced_bt_ble_scan_results_t *scan_result,uint8_t *data)
     }
 
     if(updateItem == 0)
-        updateItem = adb_database[entry].list;
+        updateItem = adb_database[entry]->list;
 
 
-    adb_database[entry].numSeen += 1;
-    adb_database[entry].lastSeen = timeSeen;
+    adb_database[entry]->numSeen += 1;
+    adb_database[entry]->lastSeen = timeSeen;
 
     updateItem->lastSeen = timeSeen;
 
@@ -249,7 +252,7 @@ static void adb_db_filter(int entry)
     {
         for(int i=0;i<adb_db_count;i++)
         {
-            adb_database[i].filter = true;
+            adb_database[i]->filter = true;
         }
         return;
     }
@@ -258,7 +261,7 @@ static void adb_db_filter(int entry)
     {
         for(int i=0;i<adb_db_count;i++)
         {
-            adb_database[i].filter = false;
+            adb_database[i]->filter = false;
         }
         return;
     }
@@ -268,7 +271,7 @@ static void adb_db_filter(int entry)
         printf("Record doesnt exist: %d\n",entry);
         return;      
     }
-    adb_database[entry].filter = !adb_database[entry].filter; 
+    adb_database[entry]->filter = !adb_database[entry]->filter; 
 
 }
 
@@ -281,17 +284,31 @@ static void adb_eraseEntry(int entry)
     }
 
     adb_adv_data_t *ptr;
-    ptr = (adb_adv_data_t *)adb_database[entry].list->next;
-    adb_database[entry].list->next = 0;
+    ptr = (adb_adv_data_t *)adb_database[entry]->list->next;
+    adb_database[entry]->list->next = 0;
     while(ptr)
     {
         adb_adv_data_t *next;
         next = (adb_adv_data_t *)ptr->next;
         free(ptr->data);
         free(ptr);
-        adb_database[entry].listCount -= 1;
+        adb_database[entry]->listCount -= 1;
         adb_recording_count -= 1;
         ptr = next;
+    }
+}
+
+static void adb_purgeEntry(int entry)
+{
+
+    adb_eraseEntry(entry);
+    free(adb_database[entry]->list);
+    free(adb_database[entry]->result);
+    free(adb_database[entry]);
+    adb_db_count -= 1;
+    for(int i=entry;i<adb_db_count;i++)
+    {
+        adb_database[i] = adb_database[i+1];
     }
 }
 
@@ -301,7 +318,7 @@ static void adb_db_watch(int entry)
     {
         for(int i=0;i<adb_db_count;i++)
         {
-            adb_database[i].watch = true;
+            adb_database[i]->watch = true;
         }
         return;
     }
@@ -310,7 +327,7 @@ static void adb_db_watch(int entry)
     {
         for(int i=0;i<adb_db_count;i++)
         {
-            adb_database[i].watch = false;
+            adb_database[i]->watch = false;
             adb_eraseEntry(i);
         }
         return;
@@ -321,12 +338,21 @@ static void adb_db_watch(int entry)
         printf("Record doesnt exist: %d\n",entry);
         return;      
     }
-    adb_database[entry].watch = !adb_database[entry].watch; 
+    adb_database[entry]->watch = !adb_database[entry]->watch; 
     
-    if(!adb_database[entry].watch)
+    if(!adb_database[entry]->watch)
         adb_eraseEntry(entry);
 
 }
+
+static int adb_sort_cmpfunc(const void * a, const void * b) 
+{
+    adb_adv_t *p1 = *((adb_adv_t **)a);
+    adb_adv_t *p2 = *((adb_adv_t **)b);
+        
+    return p2->lastSeen - p1->lastSeen;
+}
+
 
 
 void adb_task(void *arg)
@@ -385,6 +411,20 @@ void adb_task(void *arg)
                     adb_db_filter((int)msg.data0);
                 break;
 
+                case ADB_SORT:
+                    qsort(adb_database, adb_db_count, sizeof(adb_adv_t *), adb_sort_cmpfunc);
+                    adb_db_print(ADB_PRINT_METHOD_BYTES,true,-1);
+                break;
+
+                case ADB_PURGE:
+                    if((int)msg.data0<0 || (int)msg.data0>=adb_db_count)
+                    {
+                        printf("Purge error %d\n",(int)msg.data0);
+                        break;
+                    }   
+                    adb_purgeEntry((int)msg.data0);
+                break;
+
             }
 
         }
@@ -408,3 +448,7 @@ inline void adb_watch(int entry) { adb_queueCmd(ADB_WATCH,(void*)entry,(void *)0
 inline void adb_record(int packets) { adb_queueCmd(ADB_RECORD,(void*)packets,(void *)0); }
 inline void adb_erase(int entry) { adb_queueCmd(ADB_ERASE,(void*)entry,(void *)0); }
 inline void adb_filter(int entry) { adb_queueCmd(ADB_FILTER,(void*)entry,(void *)0); }
+
+inline void adb_sort(int entry) { adb_queueCmd(ADB_SORT,(void*)entry,(void *)0); }
+inline void adb_purge(int entry) { adb_queueCmd(ADB_PURGE,(void*)entry,(void *)0); }
+
